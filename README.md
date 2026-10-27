@@ -30,7 +30,7 @@ Video is **remuxed, not re-encoded**: the tool rebuilds the MP4/MOV container ar
 
 ## Credits
 
-Title font: [Bagel Fat One](https://fonts.google.com/specimen/Bagel+Fat+One), SIL Open Font License 1.1, embedded in the page so no font requests leave your browser.
+Title font: [Moirai One](https://fonts.google.com/specimen/Moirai+One), SIL Open Font License 1.1, embedded in the page so no font requests leave your browser.
 
 ## License
 
