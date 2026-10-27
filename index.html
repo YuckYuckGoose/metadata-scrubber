@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metadata Scrubber</title>
+<meta name="description" content="Strip metadata, Content Credentials and encoder tags from video and images. Lossless, and nothing is uploaded.">
+<style>
+:root{
+  --bg:#f5f4f0; --surface:#ffffff; --ink:#1c1b19; --muted:#6c6a64; --line:#e3e0d8;
+  --accent:#2f5d50; --accent-ink:#ffffff; --accent-soft:#e3eee9;
+  --warn:#b0432c; --warn-soft:#fbece7; --chip:#efede7; --ok:#2f6b46;
+  --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141412; --surface:#1d1c1a; --ink:#ecebe5; --muted:#9b998f; --line:#2f2d29;
+    --accent:#86c0aa; --accent-ink:#0e1915; --accent-soft:#1d2c26;
+    --warn:#f0907a; --warn-soft:#2d1b16; --chip:#272622; --ok:#8fd0a5;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:56px 16px 80px}
+header h1{font-size:clamp(28px,5vw,40px);line-height:1.1;letter-spacing:-.02em;margin:0 0 10px;font-weight:700}
+header p{margin:0;color:var(--muted);max-width:56ch}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 28px;padding:0;list-style:none}
+.pills li{font-size:13px;padding:4px 10px;border-radius:99px;background:var(--chip);color:var(--muted)}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  min-height:190px;padding:28px 16px;border:1.5px dashed var(--line);border-radius:var(--radius);background:var(--surface);
+  cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop:focus-visible,.drop.over{border-color:var(--accent);background:var(--accent-soft);outline:none}
+.drop strong{font-size:18px}
+.drop span{color:var(--muted);font-size:14px}
+.drop svg{width:34px;height:34px;color:var(--accent);margin-bottom:4px}
+#results{display:flex;flex-direction:column;gap:16px;margin-top:24px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 16px}
+.top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.name{font-weight:600;word-break:break-all}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+.status{font-size:14px;color:var(--muted);margin-top:10px}
+.status.err{color:var(--warn)}
+.bar{height:4px;background:var(--chip);border-radius:4px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+.btn{appearance:none;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);font:600 14px var(--sans);
+  padding:10px 14px;cursor:pointer;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{filter:brightness(1.07)}
+.summary{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--chip);font-size:14px}
+.summary b{font-weight:600}
+.summary.clean{background:var(--accent-soft)}
+.groups{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+details{border:1px solid var(--line);border-radius:10px;padding:0 12px}
+details[open]{padding-bottom:10px}
+summary{cursor:pointer;padding:10px 0;font-weight:600;font-size:14px;list-style:none;display:flex;gap:8px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;flex:none}
+details[open] summary::before{transform:rotate(45deg)}
+summary .n{color:var(--muted);font-weight:400}
+.flag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--warn);background:var(--warn-soft);padding:2px 7px;border-radius:99px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 6px}
+ul.items{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+ul.items li{font:12.5px/1.45 var(--mono);color:var(--ink);background:var(--chip);border-radius:6px;padding:5px 8px;word-break:break-word}
+ul.items li.hot{background:var(--warn-soft);color:var(--warn)}
+.kept{margin-top:10px;font-size:13px;color:var(--ok)}
+footer{margin-top:44px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+footer p{margin:0 0 8px}
+@media (max-width:520px){.wrap{padding-top:36px}.top .btn{width:100%;justify-content:center}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Metadata Scrubber</h1>
+    <p>Strip Content Credentials, XMP, EXIF, dates, location and encoder tags from video and images. Picture and sound are copied as-is with no re-encoding.</p>
+    <ul class="pills"><li>MP4 · MOV · M4V</li><li>JPEG · PNG</li><li>Runs in your browser, files never upload</li></ul>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+    <strong>Drop files here</strong>
+    <span>or click to choose · multiple files OK</span>
+    <input id="file" type="file" multiple accept=".mp4,.mov,.m4v,.jpg,.jpeg,.png,video/mp4,video/quicktime,image/jpeg,image/png" hidden>
+  </label>
+
+  <section id="results" aria-live="polite"></section>
+
+  <footer>
+    <p><b>What it can't remove:</b> invisible watermarks embedded in the pixels or audio themselves (e.g. SynthID or similar). Some AI tools add these, and platforms can still detect them.</p>
+    <p>Not supported yet: fragmented MP4 (some live-stream and DASH exports) and DRM-protected files.</p>
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* ================= byte helpers ================= */
+const u16=(b,o)=>(b[o]<<8)|b[o+1];
+const u32=(b,o)=>((b[o]<<24)>>>0)+(b[o+1]<<16)+(b[o+2]<<8)+b[o+3];
+const u64=(b,o)=>u32(b,o)*4294967296+u32(b,o+4);
+const fourcc=(b,o)=>String.fromCharCode(b[o],b[o+1],b[o+2],b[o+3]);
+function w32(b,o,v){b[o]=(v>>>24)&255;b[o+1]=(v>>>16)&255;b[o+2]=(v>>>8)&255;b[o+3]=v&255}
+function w64(b,o,v){w32(b,o,Math.floor(v/4294967296));w32(b,o+4,v>>>0)}
+function concat(parts){let n=0;for(const p of parts)n+=p.length;const r=new Uint8Array(n);let o=0;for(const p of parts){r.set(p,o);o+=p.length}return r}
+function box(t,parts){const body=concat(parts);const h=new Uint8Array(8);w32(h,0,body.length+8);for(let i=0;i<4;i++)h[4+i]=t.charCodeAt(i);return concat([h,body])}
+function parseBoxes(b,start=0,end=b.length){
+  const out=[];let o=start;
+  while(o+8<=end){
+    let size=u32(b,o),hl=8;const t=fourcc(b,o+4);
+    if(size===1){if(o+16>end)break;size=u64(b,o+8);hl=16}else if(size===0)size=end-o;
+    if(size<hl||o+size>end)break;
+    out.push({type:t,size,data:b.subarray(o+hl,o+size)});o+=size;
+  }
+  return out;
+}
+const latin1=new TextDecoder('latin1'), utf8=new TextDecoder('utf-8');
+function printable(bytes,max=160){
+  let s=utf8.decode(bytes).replace(/[\u0000-\u001f\u007f-\u009f�]+/g,' ').replace(/\s+/g,' ').trim();
+  return s.length>max?s.slice(0,max)+'…':s;
+}
+function fmtBytes(n){if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<3);return n.toFixed(n<10?2:1)+' '+u[i]}
+function mp4Date(s){if(!s)return null;const ms=(s-2082844800)*1000;if(ms<0||ms>Date.now()+3e11)return 'raw value '+s;return new Date(ms).toISOString().replace('T',' ').slice(0,16)+' UTC'}
+const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+async function readBytes(file,a,b){return new Uint8Array(await file.slice(a,b).arrayBuffer())}
+
+/* ================= report ================= */
+const GROUPS=[
+  ['c2pa','Content Credentials (C2PA)','Signed provenance record. Social platforms read this to auto-label AI content.'],
+  ['xmp','XMP metadata','Adobe-style metadata: tools, dates, file paths, edit history.'],
+  ['loc','Location',''],
+  ['tags','Embedded tags','Title, encoder, software, camera and other text tags.'],
+  ['exif','EXIF','Camera, software and date tags.'],
+  ['iptc','IPTC / Photoshop',''],
+  ['text','Text chunks',''],
+  ['comments','Comments',''],
+  ['sei','Encoder info inside the video stream','Text the encoder wrote into the H.264/HEVC bitstream (SEI user data). Removed without touching picture data.'],
+  ['tracks','Metadata & timecode tracks',''],
+  ['dates','Creation & modification dates',''],
+  ['handlers','Handler names','Labels identifying the app that wrote each track.'],
+  ['encoder','Encoder & vendor names',''],
+  ['lang','Language tags',''],
+  ['mpf','Multi-picture data',''],
+  ['other','Other metadata',''],
+  ['padding','Padding & filler boxes',''],
+  ['trailing','Trailing data',''],
+];
+class Report{
+  constructor(){this.g=new Map();this.kept=[]}
+  add(group,text,hot=false){if(!this.g.has(group))this.g.set(group,new Map());const m=this.g.get(group);if(!m.has(text))m.set(text,hot);else if(hot)m.set(text,true)}
+  get count(){let n=0;for(const m of this.g.values())n+=m.size;return n}
+}
+const NULLREP={add(){},kept:[]};
+
+/* ================= C2PA / XMP summaries ================= */
+function cborText(b,i){const h=b[i];let len,p;
+  if(h>=0x60&&h<=0x77){len=h-0x60;p=i+1}else if(h===0x78){len=b[i+1];p=i+2}else if(h===0x79){len=u16(b,i+1);p=i+3}else return null;
+  if(p+len>b.length)return null;return utf8.decode(b.subarray(p,p+len))}
+function cborValues(b,key){
+  const k=new TextEncoder().encode(key),hdr=0x60+k.length,out=new Set();
+  outer:for(let i=0;i<b.length-k.length-1;i++){if(b[i]!==hdr)continue;for(let j=0;j<k.length;j++)if(b[i+1+j]!==k[j])continue outer;const v=cborText(b,i+1+k.length);if(v!=null&&v.length<200)out.add(v)}
+  return [...out];
+}
+const DST={trainedAlgorithmicMedia:'AI-generated',compositeWithTrainedAlgorithmicMedia:'composite including AI-generated media',algorithmicMedia:'algorithmically generated',compositeSynthetic:'composite with synthetic elements',digitalCapture:'camera capture',composite:'composite',minorHumanEdits:'minor human edits',dataDrivenMedia:'data-driven media',digitalArt:'digital art',virtualRecording:'virtual recording',screenCapture:'screen capture'};
+function summarizeC2PA(b,rep){
+  rep.add('c2pa','Content Credentials manifest present ('+fmtBytes(b.length)+')',true);
+  const tools=[...cborValues(b,'name'),...cborValues(b,'claim_generator')].filter(s=>!/^jumbf manifest$/i.test(s)&&!/^c2pa\./.test(s));
+  if(tools.length)rep.add('c2pa','Tools: '+tools.join(', '));
+  const models=cborValues(b,'model_name');if(models.length)rep.add('c2pa','AI model: '+models.join(', '),true);
+  for(const v of cborValues(b,'digitalSourceType')){const k=v.split('/').pop();rep.add('c2pa','Source type: '+k+(DST[k]?' ('+DST[k]+')':''),/Algorithmic|Synthetic/i.test(k))}
+  if(latin1.decode(b).includes('com.adobe.genAi'))rep.add('c2pa','Adobe generative-AI markers',true);
+  const acts=cborValues(b,'action');if(acts.length)rep.add('c2pa','Actions: '+acts.join(', '));
+  const when=cborValues(b,'when');if(when.length)rep.add('c2pa','Dates: '+when.map(w=>w.replace('T',' ').slice(0,16)).join(', '));
+  const s=latin1.decode(b);
+  const orgs=new Set();for(const m of s.matchAll(/(Adobe Inc\.|Byteplus Pte\. Ltd\.|OpenAI|Google LLC|Microsoft Corporation|Truepic|Leica|Sony|Nikon|Canon|Samsung|Qualcomm|Runway|Meta Platforms|TikTok)/gi))orgs.add(m[1]);
+  if(orgs.size)rep.add('c2pa','Signed by: '+[...orgs].join(', '));
+}
+function summarizeXMP(s,rep,where){
+  rep.add('xmp','XMP packet'+(where?' ('+where+')':''));
+  const f=n=>{const m=s.match(new RegExp(n+'="([^"]*)"'))||s.match(new RegExp('<'+n+'>([^<]*)</'+n+'>'));return m&&m[1]};
+  const fields=[['xmp:CreatorTool','Creator tool'],['xmp:CreateDate','Created'],['xmp:ModifyDate','Modified'],['xmp:MetadataDate','Metadata date'],['photoshop:Credit','Credit'],['photoshop:City','City'],['xmpMM:OriginalDocumentID','Original document ID'],['xmpMM:DocumentID','Document ID'],['tiff:Make','Camera make'],['tiff:Model','Camera model'],['xmpDM:startTimecode','Timecode']];
+  for(const [k,l] of fields){const v=f(k);if(v)rep.add('xmp',l+': '+v.slice(0,120))}
+  const cr=s.match(/<dc:creator>[\s\S]*?<rdf:li[^>]*>([^<]*)/);if(cr)rep.add('xmp','Creator: '+cr[1]);
+  const dst=f('Iptc4xmpExt:DigitalSourceType');if(dst){const k=dst.split('/').pop();rep.add('xmp','Source type: '+k+(DST[k]?' ('+DST[k]+')':''),/Algorithmic|Synthetic/i.test(k))}
+  const paths=new Set();for(const m of s.matchAll(/(?:filePath|stRef:filePath|xmpDM:filePath)="([^"]+)"/g))paths.add(m[1]);for(const m of s.matchAll(/<stRef:filePath>([^<]+)</g))paths.add(m[1]);
+  if(paths.size)[...paths].slice(0,6).forEach(p=>rep.add('xmp','File path: '+p,true));
+  const hist=(s.match(/stEvt:action/g)||[]).length;if(hist)rep.add('xmp','Edit history: '+hist+' entries');
+  const ing=(s.match(/xmpMM:Ingredients|xmpMM:Pantry|xmpMM:DerivedFrom/g)||[]).length;if(ing)rep.add('xmp','Source file references (ingredients / derived-from)');
+  if(/exif:GPSLatitude/.test(s)){rep.add('loc','GPS coordinates (in XMP)',true)}
+}
+
+/* ================= H.264 / HEVC SEI user-data removal ================= */
+function cleanSEI(nal,hevc){
+  const H=hevc?2:1,r=new Uint8Array(nal.length);let n=0,z=0;
+  for(let i=H;i<nal.length;i++){const v=nal[i];if(z>=2&&v===3){z=0;continue}r[n++]=v;z=v===0?z+1:0}
+  let p=0;const keep=[],texts=[];let removed=0;
+  while(p<n){
+    if(r[p]===0x80){let tail=true;for(let k=p+1;k<n;k++)if(r[k]){tail=false;break}if(tail)break}
+    let t=0;while(p<n&&r[p]===255){t+=255;p++}if(p>=n)return null;t+=r[p++];
+    let s=0;while(p<n&&r[p]===255){s+=255;p++}if(p>=n)return null;s+=r[p++];
+    if(p+s>n)return null;
+    const pl=r.subarray(p,p+s);
+    if(t===5){removed++;const tx=printable(pl.subarray(16),140);texts.push(tx||'(binary user data, UUID '+hex(pl.subarray(0,16))+')')}else keep.push({t,pl});
+    p+=s;
+  }
+  if(!removed)return {changed:false};
+  if(!keep.length)return {changed:true,nal:null,texts};
+  const rb=[];for(const m of keep){let t=m.t;while(t>=255){rb.push(255);t-=255}rb.push(t);let s=m.pl.length;while(s>=255){rb.push(255);s-=255}rb.push(s);for(const x of m.pl)rb.push(x)}rb.push(0x80);
+  const out=Array.from(nal.subarray(0,H));z=0;for(const v of rb){if(z>=2&&v<=3){out.push(3);z=0}out.push(v);z=v===0?z+1:0}
+  return {changed:true,nal:Uint8Array.from(out),texts};
+}
+function cleanSample(s,L,hevc,rep){
+  let p=0,changed=false;const parts=[];
+  while(p<s.length){
+    if(p+L>s.length)return s;
+    let len=0;for(let k=0;k<L;k++)len=len*256+s[p+k];
+    const a=p+L,e=a+len;if(len===0||e>s.length)return s;
+    const nal=s.subarray(a,e),typ=hevc?(nal[0]>>1)&63:nal[0]&31;
+    if(hevc?(typ===39||typ===40):typ===6){
+      const r=cleanSEI(nal,hevc);
+      if(r&&r.changed){changed=true;r.texts.forEach(t=>rep.add('sei',t));
+        if(r.nal){const h=new Uint8Array(L);let v=r.nal.length;for(let k=L-1;k>=0;k--){h[k]=v&255;v=Math.floor(v/256)}parts.push(h,r.nal)}
+        p=e;continue}
+    }
+    parts.push(s.subarray(p,e));p=e;
+  }
+  return changed?concat(parts):s;
+}
+function cleanHvcC(d,rep){
+  if(d.length<23)return d;
+  const na=d[22];let p=23,changed=false;const arrs=[];
+  for(let a=0;a<na;a++){
+    if(p+3>d.length)return d;
+    const b0=d[p],t=b0&63,cnt=u16(d,p+1);p+=3;const nals=[];
+    for(let i=0;i<cnt;i++){const L=u16(d,p);const nal=d.subarray(p+2,p+2+L);p+=2+L;
+      if(t===39||t===40){const r=cleanSEI(nal,true);if(r&&r.changed){changed=true;r.texts.forEach(x=>rep.add('sei',x));if(r.nal)nals.push(r.nal);continue}}
+      nals.push(nal)}
+    if(nals.length)arrs.push({b0,nals});else changed=true;
+  }
+  if(!changed)return d;
+  const out=[d.subarray(0,22),Uint8Array.of(arrs.length)];
+  for(const a of arrs){out.push(Uint8Array.of(a.b0,a.nals.length>>8,a.nals.length&255));for(const n of a.nals){out.push(Uint8Array.of(n.length>>8,n.length&255),n)}}
+  out.push(d.subarray(p));return concat(out);
+}
+
+/* ================= MP4 / MOV ================= */
+const CONTAINERS=new Set(['moov','trak','mdia','minf','stbl','edts','dinf']);
+const DROP_BOXES=new Set(['udta','meta','uuid','free','skip','wide','Xtra','cprt','pnot','PICT','ID32','junk','pdin']);
+const DROP_HANDLERS={meta:'Timed metadata track',tmcd:'Timecode track',hint:'Hint track',camm:'Camera motion metadata track',gpmd:'GoPro telemetry track'};
+const TAGNAMES={'©too':'Encoder','©swr':'Software','©day':'Date','©mak':'Make','©mod':'Model','©nam':'Title','©ART':'Artist','©cmt':'Comment','©enc':'Encoded by','©inf':'Info','©fmt':'Format','©src':'Source','©des':'Description','©cpy':'Copyright','©wrt':'Writer','©dir':'Director','©prd':'Producer','©req':'Requirements','©aut':'Author'};
+
+async function topBoxes(file){
+  const out=[],N=file.size;let o=0;
+  while(o+8<=N){
+    const h=await readBytes(file,o,Math.min(o+16,N));
+    let size=u32(h,0),hl=8;const t=fourcc(h,4);
+    if(size===1){size=u64(h,8);hl=16}else if(size===0)size=N-o;
+    if(size<hl)throw new Error('The file structure is damaged near byte '+o+'.');
+    if(o+size>N)size=N-o;
+    out.push({type:t,start:o,size,hl});o+=size;
+  }
+  return out;
+}
+function describeUuid(d,rep){
+  const id=hex(d.subarray(0,16)),c=d.subarray(16);
+  if(id==='d8fec3d61b0e483c92975828877ec481'||latin1.decode(c.subarray(0,4096)).includes('c2pa'))summarizeC2PA(c,rep);
+  else if(id==='be7acfcb97a942e89c71999491e3afac')summarizeXMP(utf8.decode(c),rep,'uuid box');
+  else rep.add('other','uuid box '+id.slice(0,8)+'… '+printable(c,80));
+}
+function describeMetaBox(d,rep){
+  const off=(d.length>=4&&u32(d,0)===0)?4:0;
+  const kids=parseBoxes(d,off);let keys=null;
+  const k=kids.find(x=>x.type==='keys');
+  if(k){keys=[];const n=u32(k.data,4);let p=8;for(let i=0;i<n&&p+8<=k.data.length;i++){const sz=u32(k.data,p);keys.push(latin1.decode(k.data.subarray(p+8,p+sz)));p+=sz}}
+  for(const x of kids){
+    if(x.type==='ilst'){
+      for(const it of parseBoxes(x.data)){
+        const name=keys?(keys[(it.type.charCodeAt(0)<<24|it.type.charCodeAt(1)<<16|it.type.charCodeAt(2)<<8|it.type.charCodeAt(3))-1]||it.type):it.type;
+        const db=parseBoxes(it.data).find(y=>y.type==='data');
+        const val=db?printable(db.data.subarray(8),120):printable(it.data,120);
+        const label=TAGNAMES[name]||name.replace(/^com\.apple\.quicktime\./,'');
+        if(/location|ISO6709|©xyz/i.test(name))rep.add('loc',label+': '+val,true);
+        else rep.add('tags',label+': '+val);
+      }
+    }else if(x.type==='xml '||x.type==='XMP_'){const s=utf8.decode(x.data);if(s.includes('xmpmeta'))summarizeXMP(s,rep,'meta');else rep.add('tags','XML: '+printable(x.data,100))}
+    else if(x.type==='keys'||x.type==='hdlr'||x.type==='free')continue;
+    else if(x.type==='uuid')describeUuid(x.data,rep);
+    else rep.add('tags',x.type+': '+printable(x.data,100));
+  }
+}
+function describeBox(type,d,size,rep){
+  if(type==='uuid')return describeUuid(d,rep);
+  if(type==='free'||type==='skip'||type==='wide'||type==='junk'){
+    let nz=false;for(let i=0;i<d.length;i++)if(d[i]){nz=true;break}
+    return rep.add('padding',type+' ('+fmtBytes(size)+(nz?', contained data':', empty')+')');
+  }
+  if(type==='meta')return describeMetaBox(d,rep);
+  if(type==='udta'){
+    for(const c of parseBoxes(d)){
+      if(c.type==='meta')describeMetaBox(c.data,rep);
+      else if(c.type==='XMP_')summarizeXMP(utf8.decode(c.data),rep,'udta');
+      else if(c.type==='©xyz'||c.type==='loci')rep.add('loc',(c.type==='loci'?'Location':'GPS')+': '+printable(c.data.subarray(c.type==='loci'?6:4),100),true);
+      else if(c.type==='uuid')describeUuid(c.data,rep);
+      else if(c.type.charCodeAt(0)===0xA9){const looksQT=c.data.length>=4&&u16(c.data,0)<=c.data.length-4;rep.add('tags',(TAGNAMES[c.type]||c.type)+': '+printable(looksQT?c.data.subarray(4):c.data,120))}
+      else if(c.type==='name')rep.add('tags','Track name: '+printable(c.data,100));
+      else if(c.type==='free'||c.type==='skip')continue;
+      else rep.add('tags',c.type+(c.data.length?': '+printable(c.data,80):''));
+    }
+    return;
+  }
+  rep.add('other',type+' box ('+fmtBytes(size)+')'+(d.length?': '+printable(d,60):''));
+}
+function parseTrack(node){
+  const t={handler:'',id:0,chunks:null};const get=(a,ty)=>a.find(k=>k.type===ty);
+  const kids=parseBoxes(node.data);
+  const tkhd=get(kids,'tkhd');
+  if(tkhd){const d=tkhd.data,v1=d[0]===1;t.id=u32(d,v1?20:12);const wo=v1?88:76;if(d.length>=wo+8){t.w=Math.round(u32(d,wo)/65536);t.h=Math.round(u32(d,wo+4)/65536)}}
+  const mdia=get(kids,'mdia');if(!mdia)return t;const mk=parseBoxes(mdia.data);
+  const hdlr=get(mk,'hdlr');if(hdlr&&hdlr.data.length>=12)t.handler=fourcc(hdlr.data,8);
+  const minf=get(mk,'minf');const stbl=minf&&get(parseBoxes(minf.data),'stbl');if(!stbl)return t;
+  const sk=parseBoxes(stbl.data);
+  const stsd=get(sk,'stsd'),stsc=get(sk,'stsc'),stsz=get(sk,'stsz')||get(sk,'stz2'),stco=get(sk,'stco')||get(sk,'co64');
+  if(stsd){const ents=parseBoxes(stsd.data,8);const e0=ents[0];
+    if(e0){t.codec=e0.type;
+      if(t.handler==='vide'&&e0.data.length>=78){const ext=parseBoxes(e0.data,78);const av=get(ext,'avcC'),hv=get(ext,'hvcC');
+        if(av&&av.data.length>4)t.nal={len:(av.data[4]&3)+1,hevc:false};else if(hv&&hv.data.length>22)t.nal={len:(hv.data[21]&3)+1,hevc:true}}}
+    t.encrypted=/sinf|encv|enca/.test(latin1.decode(stsd.data));}
+  if(!stsc||!stsz||!stco)return t;
+  const cd=stco.data,nC=u32(cd,4),offs=new Float64Array(nC),is64=stco.type==='co64';
+  for(let i=0;i<nC;i++)offs[i]=is64?u64(cd,8+8*i):u32(cd,8+4*i);
+  const zd=stsz.data;let n,sizes;
+  if(stsz.type==='stsz'){const ss=u32(zd,4);n=u32(zd,8);sizes=new Uint32Array(n);if(ss)sizes.fill(ss);else for(let i=0;i<n;i++)sizes[i]=u32(zd,12+4*i)}
+  else{const fs=zd[7];n=u32(zd,8);sizes=new Uint32Array(n);for(let i=0;i<n;i++)sizes[i]=fs===4?(zd[12+(i>>1)]>>((i&1)?0:4))&15:fs===8?zd[12+i]:u16(zd,12+2*i)}
+  const sd=stsc.data,ne=u32(sd,4),ent=[];for(let i=0;i<ne;i++)ent.push([u32(sd,8+12*i),u32(sd,12+12*i)]);
+  const chunks=[];let s=0;
+  for(let e=0;e<ne;e++){const first=ent[e][0]-1,last=e+1<ne?ent[e+1][0]-1:nC;for(let c=first;c<last&&c<nC;c++){if(s>=n)break;const cnt=Math.min(ent[e][1],n-s);chunks.push({ci:c,off:offs[c],first:s,count:cnt});s+=cnt}}
+  t.chunks=chunks;t.sizes=sizes;t.newSizes=sizes;t.newOff=new Float64Array(nC);
+  return t;
+}
+function fixTimes(node,ctx){
+  const d=node.data.slice(),v1=d[0]===1,label={mvhd:'Movie',tkhd:'Track',mdhd:'Media'}[node.type];
+  const c=v1?u64(d,4):u32(d,4),m=v1?u64(d,12):u32(d,8);
+  if(c)ctx.rep.add('dates',label+' created: '+mp4Date(c));if(m&&m!==c)ctx.rep.add('dates',label+' modified: '+mp4Date(m));
+  d.fill(0,4,v1?20:12);
+  if(node.type==='mdhd'){const lo=v1?32:20;if(d.length>=lo+2){const L=u16(d,lo);
+    if(L!==0x55C4){ctx.rep.add('lang',L<0x400?'QuickTime language code '+L:String.fromCharCode(((L>>10)&31)+96,((L>>5)&31)+96,(L&31)+96));d[lo]=0x55;d[lo+1]=0xC4}}}
+  return box(node.type,[d]);
+}
+function fixHdlr(node,ctx){
+  const d=node.data;if(d.length<24)return box('hdlr',[d]);
+  const nm=printable(d.subarray(24),80);if(nm)ctx.rep.add('handlers',nm);
+  const out=new Uint8Array(25);out.set(d.subarray(0,12));return box('hdlr',[out]);
+}
+function fixStsd(node,ctx){
+  const d=node.data,t=ctx.track;
+  if(!t||t.handler!=='vide')return box('stsd',[d]);
+  const out=[d.subarray(0,8)];
+  for(const e of parseBoxes(d,8)){
+    if(e.data.length<78){out.push(box(e.type,[e.data]));continue}
+    const p=e.data.slice(0,78);
+    if(u32(p,12)){ctx.rep.add('encoder','Vendor code: '+fourcc(p,12));p.fill(0,12,16)}
+    const cl=Math.min(p[42],31);if(cl){const s=printable(p.subarray(43,43+cl));if(s)ctx.rep.add('encoder','Compressor name: '+s)}
+    p.fill(0,42,74);
+    const ext=parseBoxes(e.data,78).map(x=>{
+      if(x.type==='hvcC')return box('hvcC',[cleanHvcC(x.data,ctx.rep)]);
+      if(x.type==='uuid'||x.type==='free'){describeBox(x.type,x.data,x.size+8,ctx.rep);return null}
+      return box(x.type,[x.data]);
+    }).filter(Boolean);
+    out.push(box(e.type,[p,...ext]));
+  }
+  return box('stsd',out);
+}
+function chunkBox(ctx){
+  const t=ctx.track,n=t.newOff.length;
+  if(ctx.co64){const d=new Uint8Array(8+8*n);w32(d,4,n);for(let i=0;i<n;i++)w64(d,8+8*i,ctx.base+t.newOff[i]);return box('co64',[d])}
+  const d=new Uint8Array(8+4*n);w32(d,4,n);for(let i=0;i<n;i++)w32(d,8+4*i,ctx.base+t.newOff[i]);return box('stco',[d]);
+}
+function stszBox(t){const n=t.newSizes.length,d=new Uint8Array(12+4*n);w32(d,8,n);for(let i=0;i<n;i++)w32(d,12+4*i,t.newSizes[i]);return box('stsz',[d])}
+function rebuild(node,ctx){
+  const t=node.type;
+  if(DROP_BOXES.has(t)){describeBox(t,node.data,node.size,ctx.rep);return null}
+  switch(t){
+    case 'mvhd':case 'tkhd':case 'mdhd':return fixTimes(node,ctx);
+    case 'hdlr':return fixHdlr(node,ctx);
+    case 'stsd':return fixStsd(node,ctx);
+    case 'stco':case 'co64':return ctx.track&&ctx.track.chunks?chunkBox(ctx):box(t,[node.data]);
+    case 'stsz':case 'stz2':return ctx.track&&ctx.track.newSizes&&ctx.track.newSizes!==ctx.track.sizes?stszBox(ctx.track):box(t,[node.data]);
+    case 'tref':{
+      const kids=[];for(const c of parseBoxes(node.data)){const ids=[];for(let i=0;i+4<=c.data.length;i+=4){const id=u32(c.data,i);if(!ctx.dropped.has(id))ids.push(c.data.subarray(i,i+4))}if(ids.length)kids.push(box(c.type,ids))}
+      return kids.length?box('tref',kids):null;
+    }
+  }
+  if(CONTAINERS.has(t))return box(t,parseBoxes(node.data).map(c=>rebuild(c,ctx)).filter(Boolean));
+  return box(t,[node.data]);
+}
+function buildMoov(kids,traks,ctx){
+  const out=[];let ti=0;
+  for(const k of kids){
+    if(k.type==='trak'){const t=traks[ti++];if(t.drop)continue;out.push(rebuild(k,{...ctx,track:t}));continue}
+    const r=rebuild(k,{...ctx,track:null});if(r)out.push(r);
+  }
+  return box('moov',out);
+}
+async function processMP4(file,rep,progress){
+  const tops=await topBoxes(file);
+  if(tops.some(b=>b.type==='moof'))throw new Error('This is a fragmented MP4, which isn’t supported yet. Re-export it as a standard MP4 or MOV.');
+  const moovs=tops.filter(b=>b.type==='moov');
+  if(moovs.length!==1)throw new Error(moovs.length?'Multiple movie headers found; the file looks damaged.':'No movie header found. Is this a complete MP4/MOV file?');
+  let ftyp=null;
+  for(const b of tops){
+    if(b.type==='moov'||b.type==='mdat')continue;
+    if(b.type==='ftyp'){ftyp=await readBytes(file,b.start,b.start+b.size);continue}
+    const d=await readBytes(file,b.start+b.hl,b.start+Math.min(b.size,16*1024*1024));
+    describeBox(b.type,d,b.size,rep);
+  }
+  const m=moovs[0];const moovData=await readBytes(file,m.start+m.hl,m.start+m.size);
+  const kids=parseBoxes(moovData);
+  if(kids.some(k=>k.type==='mvex'))throw new Error('This is a fragmented MP4, which isn’t supported yet. Re-export it as a standard MP4 or MOV.');
+  const traks=kids.filter(k=>k.type==='trak').map(parseTrack);
+  if(traks.some(t=>t.encrypted))throw new Error('This file is DRM-protected/encrypted and can’t be processed.');
+  const dropped=new Set();
+  for(const t of traks){
+    const why=DROP_HANDLERS[t.handler]||(t.codec==='gpmd'||t.codec==='mebx'?'Timed metadata track':null);
+    if(why){t.drop=true;dropped.add(t.id);rep.add('tracks',why+' ('+t.handler+(t.codec?' / '+t.codec:'')+')',t.handler==='meta'||t.codec==='gpmd')}
+  }
+  // copy sample data in original interleaved order
+  const all=[];for(const t of traks)if(!t.drop&&t.chunks)for(const c of t.chunks)all.push({t,...c});
+  all.sort((a,b)=>a.off-b.off);
+  let total=0;for(const c of all){let L=0;for(let k=0;k<c.count;k++)L+=c.t.sizes[c.first+k];c.len=L;total+=L}
+  const parts=[],seen=new Map();let pos=0,done=0,lastTick=0;
+  for(const c of all){
+    const t=c.t,key=c.off+':'+c.len;
+    if(seen.has(key)){t.newOff[c.ci]=seen.get(key);continue}
+    if(c.off+c.len>file.size)throw new Error('Sample data points past the end of the file. The file may be truncated.');
+    t.newOff[c.ci]=pos;seen.set(key,pos);
+    if(t.nal&&c.len){
+      const buf=await readBytes(file,c.off,c.off+c.len);let p=0,chg=false;const outs=[];
+      for(let k=0;k<c.count;k++){const sz=t.sizes[c.first+k],s=buf.subarray(p,p+sz),r=cleanSample(s,t.nal.len,t.nal.hevc,rep);
+        if(r!==s){chg=true;if(t.newSizes===t.sizes)t.newSizes=Uint32Array.from(t.sizes);t.newSizes[c.first+k]=r.length}outs.push(r);p+=sz}
+      if(chg){const cat=concat(outs);parts.push(cat);pos+=cat.length}else{parts.push(file.slice(c.off,c.off+c.len));pos+=c.len}
+    }else{parts.push(file.slice(c.off,c.off+c.len));pos+=c.len}
+    done+=c.len;
+    if(done-lastTick>8e6){lastTick=done;progress(done/Math.max(total,1));await new Promise(r=>setTimeout(r,0))}
+  }
+  const payload=pos,mdatHL=payload+8>0xFFFFFFFF?16:8,co64=payload>0xFFFFFFFF-256*1024*1024;
+  const ftypLen=ftyp?ftyp.length:0;
+  const probe=buildMoov(kids,traks,{rep:NULLREP,base:0,co64,dropped});
+  const base=ftypLen+probe.length+mdatHL;
+  const moov=buildMoov(kids,traks,{rep,base,co64,dropped});
+  if(moov.length!==probe.length)throw new Error('Internal layout error. Please report this file.');
+  const mh=new Uint8Array(mdatHL);
+  if(mdatHL===16){w32(mh,0,1);mh.set([109,100,97,116],4);w64(mh,8,payload+16)}else{w32(mh,0,payload+8);mh.set([109,100,97,116],4)}
+  for(const t of traks)if(!t.drop){
+    const kind={vide:'Video',soun:'Audio',sbtl:'Subtitles',text:'Text',subt:'Subtitles',clcp:'Captions'}[t.handler]||t.handler;
+    rep.kept.push(kind+(t.codec?' ('+t.codec.trim()+(t.handler==='vide'&&t.w?', '+t.w+'×'+t.h:'')+')':''));
+  }
+  progress(1);
+  return [ftyp||new Uint8Array(0),moov,mh,...parts];
+}
+
+/* ================= JPEG ================= */
+const EXIF0={0x10E:'Description',0x10F:'Camera make',0x110:'Camera model',0x131:'Software',0x132:'Date',0x13B:'Artist',0x8298:'Copyright'};
+const EXIFX={0x9003:'Date taken',0x9004:'Date digitized',0xA420:'Unique image ID',0xA430:'Camera owner',0xA431:'Body serial number',0xA433:'Lens make',0xA434:'Lens model',0xA435:'Lens serial number',0x9286:'User comment'};
+function parseExif(t){
+  const res={};
+  try{
+    const le=t[0]===0x49,r16=o=>le?t[o]|(t[o+1]<<8):u16(t,o),r32=o=>le?(t[o]|(t[o+1]<<8)|(t[o+2]<<16))+t[o+3]*16777216:u32(t,o);
+    const walk=(off,cb)=>{if(!off||off+2>t.length)return;const n=r16(off);for(let i=0;i<n;i++){const e=off+2+i*12;if(e+12>t.length)break;const tag=r16(e),type=r16(e+2),cnt=r32(e+4);const vo=(cnt>4&&(type===2||type===7))?r32(e+8):e+8;cb(tag,type,cnt,vo,e)}};
+    walk(r32(4),(tag,type,cnt,vo,e)=>{if(tag===0x112)res.orientation=r16(e+8);else if(tag===0x8825)res.gps=true;else if(tag===0x8769)res.sub=r32(e+8);else if(type===2&&EXIF0[tag])res[EXIF0[tag]]=printable(t.subarray(vo,vo+cnt),100)});
+    if(res.sub)walk(res.sub,(tag,type,cnt,vo)=>{if((type===2||type===7)&&EXIFX[tag]){const v=printable(t.subarray(vo+(tag===0x9286?8:0),vo+cnt),100);if(v)res[EXIFX[tag]]=v}});
+  }catch(e){}
+  return res;
+}
+function reportExif(info,rep,where){
+  let any=false;
+  for(const [k,v] of Object.entries(info)){if(k==='orientation'||k==='gps'||k==='sub')continue;rep.add('exif',k+': '+v);any=true}
+  if(info.gps)rep.add('loc','GPS coordinates ('+where+')',true);
+  if(!any&&!info.gps)rep.add('exif','EXIF block ('+where+')');
+}
+function minimalExif(o){
+  const b=Uint8Array.of(0xFF,0xE1,0,34,0x45,0x78,0x69,0x66,0,0,0x4D,0x4D,0,0x2A,0,0,0,8,0,1,0x01,0x12,0,3,0,0,0,1,0,o,0,0,0,0,0,0);
+  return b;
+}
+function processJPEG(b,rep){
+  if(!(b[0]===0xFF&&b[1]===0xD8))throw new Error('Not a valid JPEG.');
+  const out=[b.subarray(0,2)],app11=[];let o=2,orientation=1,insertAt=1;
+  while(o<b.length){
+    if(b[o]!==0xFF)throw new Error('Unexpected data in JPEG structure.');
+    const m=b[o+1];
+    if(m===0xFF){o++;continue}
+    if(m===0xD9){out.push(b.subarray(o,o+2));o+=2;break}
+    if((m>=0xD0&&m<=0xD7)||m===0x01){out.push(b.subarray(o,o+2));o+=2;continue}
+    const len=u16(b,o+2),seg=b.subarray(o,o+2+len),pl=b.subarray(o+4,o+2+len);
+    if(m===0xDA){let e=o+2+len;while(e<b.length-1){if(b[e]===0xFF){const n=b[e+1];if(n!==0&&!(n>=0xD0&&n<=0xD7)&&n!==0xFF)break}e++}if(e>=b.length-1)e=b.length;out.push(b.subarray(o,e));o=e;continue}
+    o+=2+len;
+    if(m>=0xE0&&m<=0xEF){
+      const id=latin1.decode(pl.subarray(0,Math.min(pl.length,40)));
+      if(m===0xE0&&id.startsWith('JFIF\0')){out.push(seg);insertAt=out.length;continue}
+      if(m===0xE2&&id.startsWith('ICC_PROFILE\0')){out.push(seg);continue}
+      if(m===0xEE&&id.startsWith('Adobe')){out.push(seg);continue}
+      if(m===0xE1&&id.startsWith('Exif\0')){const info=parseExif(pl.subarray(6));orientation=info.orientation||1;reportExif(info,rep,'EXIF')}
+      else if(m===0xE1&&id.startsWith('http://ns.adobe.com/xap/1.0/')){summarizeXMP(utf8.decode(pl.subarray(29)),rep)}
+      else if(m===0xE1&&id.startsWith('http://ns.adobe.com/xmp/extension/')){rep.add('xmp','Extended XMP block')}
+      else if(m===0xEB){app11.push(pl)}
+      else if(m===0xED){rep.add('iptc',id.startsWith('Photoshop')?'Photoshop / IPTC block ('+fmtBytes(pl.length)+')':'APP13 block')}
+      else if(m===0xE2&&id.startsWith('MPF')){rep.add('mpf','MPF index (secondary images such as previews, depth maps or HDR gain maps)')}
+      else{const nm=id.split('\0')[0].replace(/[^\x20-\x7e]/g,'');rep.add('other','APP'+(m-0xE0)+' segment'+(nm?' ('+nm.slice(0,30)+')':'')+', '+fmtBytes(pl.length))}
+      continue;
+    }
+    if(m===0xFE){rep.add('comments',printable(pl,140)||'(empty comment)');continue}
+    out.push(seg);
+  }
+  if(o<b.length)rep.add('trailing',fmtBytes(b.length-o)+' after end of image (embedded previews, gain maps or app data)');
+  if(app11.length)summarizeC2PA(concat(app11),rep);
+  if(orientation>1&&orientation<=8){out.splice(insertAt,0,minimalExif(orientation));rep.kept.push('Rotation flag (orientation '+orientation+') so the photo still displays upright')}
+  rep.kept.push('Image data'+(out.some(s=>s[1]===0xE2)?', color profile':''));
+  return [concat(out)];
+}
+
+/* ================= PNG ================= */
+const PNG_KEEP=new Set(['IHDR','PLTE','IDAT','IEND','tRNS','gAMA','cHRM','sRGB','iCCP','sBIT','cICP','mDCV','mDCv','cLLI','cLLi','acTL','fcTL','fdAT','bKGD','pHYs']);
+function processPNG(b,rep){
+  const sig=[137,80,78,71,13,10,26,10];if(!sig.every((v,i)=>b[i]===v))throw new Error('Not a valid PNG.');
+  const out=[b.subarray(0,8)];let o=8;
+  while(o+12<=b.length){
+    const len=u32(b,o),t=fourcc(b,o+4),end=o+12+len;if(end>b.length)throw new Error('PNG is truncated.');
+    const d=b.subarray(o+8,o+8+len);
+    if(PNG_KEEP.has(t)||(t.charCodeAt(0)>=65&&t.charCodeAt(0)<=90))out.push(b.subarray(o,end));
+    else if(t==='tEXt'){const z=d.indexOf(0);rep.add('text',latin1.decode(d.subarray(0,z))+': '+printable(d.subarray(z+1),120))}
+    else if(t==='zTXt'){const z=d.indexOf(0);rep.add('text',latin1.decode(d.subarray(0,z))+': (compressed text)')}
+    else if(t==='iTXt'){const z=d.indexOf(0),k=latin1.decode(d.subarray(0,z)),cf=d[z+1];let p=z+3;p=d.indexOf(0,p)+1;p=d.indexOf(0,p)+1;const txt=cf?'(compressed text)':utf8.decode(d.subarray(p));
+      if(k==='XML:com.adobe.xmp'&&!cf)summarizeXMP(txt,rep);else rep.add('text',k+': '+(cf?txt:printable(d.subarray(p),120)))}
+    else if(t==='eXIf')reportExif(parseExif(d),rep,'EXIF');
+    else if(t==='tIME')rep.add('dates','Last modified: '+u16(d,0)+'-'+String(d[2]).padStart(2,'0')+'-'+String(d[3]).padStart(2,'0')+' '+String(d[4]).padStart(2,'0')+':'+String(d[5]).padStart(2,'0'));
+    else if(t==='caBX')summarizeC2PA(d,rep);
+    else rep.add('other',t+' chunk ('+fmtBytes(len)+')');
+    o=end;if(t==='IEND')break;
+  }
+  if(o<b.length)rep.add('trailing',fmtBytes(b.length-o)+' after end of image');
+  rep.kept.push('Image data, color & transparency info');
+  return [concat(out)];
+}
+
+/* ================= UI ================= */
+const $=s=>document.querySelector(s);
+const drop=$('#drop'),input=$('#file'),results=$('#results');
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+async function sniff(file){
+  const h=await readBytes(file,0,Math.min(12,file.size));
+  if(h[0]===0xFF&&h[1]===0xD8)return 'jpeg';
+  if(h[0]===0x89&&h[1]===0x50&&h[2]===0x4E&&h[3]===0x47)return 'png';
+  if(h.length>=8&&['ftyp','moov','mdat','wide','free','skip','uuid','pnot'].includes(fourcc(h,4)))return 'mp4';
+  return null;
+}
+function outName(name,kind){
+  const m=name.match(/^(.*?)(\.[^.]+)?$/);const ext=m[2]||({jpeg:'.jpg',png:'.png',mp4:'.mp4'})[kind];
+  return m[1]+'_clean'+ext;
+}
+function mimeFor(kind,name){if(kind==='jpeg')return 'image/jpeg';if(kind==='png')return 'image/png';return /\.mov$/i.test(name)?'video/quicktime':'video/mp4'}
+async function processFile(file){
+  const card=el('article','card'),top=el('div','top'),info=el('div'),name=el('div','name',file.name),meta=el('div','meta',fmtBytes(file.size));
+  info.append(name,meta);top.append(info);card.append(top);
+  const status=el('div','status','Reading…'),bar=el('div','bar'),fill=el('i');bar.append(fill);card.append(status,bar);
+  results.prepend(card);
+  const t0=performance.now();
+  try{
+    const kind=await sniff(file);
+    if(!kind)throw new Error('Unsupported file type. Use MP4, MOV, M4V, JPEG or PNG.');
+    const rep=new Report();let parts;
+    if(kind==='mp4'){status.textContent='Processing…';parts=await processMP4(file,rep,p=>{fill.style.width=(p*100).toFixed(1)+'%'})}
+    else{const b=await readBytes(file,0,file.size);parts=kind==='jpeg'?processJPEG(b,rep):processPNG(b,rep);fill.style.width='100%'}
+    const blob=new Blob(parts,{type:mimeFor(kind,file.name)});
+    bar.remove();status.remove();
+    const a=el('a','btn');a.href=URL.createObjectURL(blob);a.download=outName(file.name,kind);
+    a.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 19h16"/></svg>';
+    a.append('Download clean file');top.append(a);
+    meta.textContent=fmtBytes(file.size)+' → '+fmtBytes(blob.size)+' · '+((performance.now()-t0)/1000).toFixed(1)+'s';
+    const n=rep.count,hot=[...rep.g.values()].some(m=>[...m.values()].some(Boolean));
+    const sum=el('div','summary'+(n?'':' clean'));
+    const why=[];const hk=k=>rep.g.has(k)&&[...rep.g.get(k).values()].some(Boolean);
+    if(hk('c2pa'))why.push('AI / provenance labels');if(hk('loc'))why.push('location');if(hk('xmp'))why.push('file paths or AI tags');if(hk('tracks'))why.push('metadata tracks');
+    if(n){const b=el('b',null,'Removed '+n+' item'+(n===1?'':'s'));sum.append(b,document.createTextNode(why.length?', including '+why.join(', ')+'.':'.'))}
+    else sum.textContent='No metadata found. This file was already clean.';
+    card.append(sum);
+    const groups=el('div','groups');
+    for(const [key,label,hint] of GROUPS){
+      const m=rep.g.get(key);if(!m||!m.size)continue;
+      const d=el('details'),s=el('summary');const isHot=[...m.values()].some(Boolean);
+      s.append(document.createTextNode(label+' '),el('span','n',m.size>1?'('+m.size+')':''));
+      if(isHot)s.append(el('span','flag',key==='loc'?'Location':key==='xmp'&&!/Algorithmic/.test([...m.keys()].join())?'Paths':'AI'));
+      d.append(s);if(hint)d.append(el('p','hint',hint));
+      const ul=el('ul','items');for(const [txt,h] of m){ul.append(el('li',h?'hot':'',txt))}d.append(ul);
+      if(isHot)d.open=true;groups.append(d);
+    }
+    card.append(groups);
+    if(rep.kept.length)card.append(el('div','kept','Kept untouched: '+rep.kept.join(' · ')+(kind==='mp4'?' — no re-encoding':'')));
+  }catch(err){
+    console.error(err);bar.remove();status.className='status err';status.textContent=err.message||String(err);
+  }
+}
+async function handle(files){for(const f of files)await processFile(f)}
+input.addEventListener('change',()=>{handle([...input.files]);input.value=''});
+drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click()}});
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>handle([...e.dataTransfer.files]));
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
+</script>
+</body>
+</html>
