@@ -1,6 +1,6 @@
 # Metadata Scrubber
 
-**[Open the tool →](https://yuckyuckgoose.github.io/metadata-scrubber/)**
+**[Open the tool →](https://weirdboobmagic.com/)**
 
 Strip Content Credentials (C2PA), XMP, EXIF, location, dates and encoder tags from video and images, losslessly, entirely in your browser.
 
