@@ -1,4 +1,4 @@
-# Metadata Scrubber
+# Weird Boob Magic: Metadata Scrubber
 
 **[Open the tool →](https://weirdboobmagic.com/)**
 
@@ -27,6 +27,10 @@ Video is **remuxed, not re-encoded**: the tool rebuilds the MP4/MOV container ar
 - It can't remove invisible watermarks embedded in the pixels or audio themselves (e.g. SynthID). Platforms may still detect these.
 - Not yet supported: fragmented MP4 (some live-stream/DASH exports) and DRM-protected files.
 - Platform and client rules on AI disclosure still apply. This tool removes tags; it doesn't change what you're required to disclose.
+
+## Credits
+
+Title font: [Bagel Fat One](https://fonts.google.com/specimen/Bagel+Fat+One), SIL Open Font License 1.1, embedded in the page so no font requests leave your browser.
 
 ## License
 
