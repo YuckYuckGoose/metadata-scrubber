@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weird Boob Magic · Metadata Scrubber</title>
-<meta name="description" content="Strip metadata, Content Credentials and encoder tags from video and images. Lossless, and nothing is uploaded.">
+<meta name="description" content="Remove AI Content Credentials (C2PA), EXIF, GPS and encoder tags from video and images. Lossless, and nothing leaves your browser.">
 <style>
 :root{
   --bg:#f5f4f0; --surface:#ffffff; --ink:#1c1b19; --muted:#6c6a64; --line:#e3e0d8;
@@ -41,7 +41,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--san
 .wordmark span:nth-child(odd){transform:rotate(-2.5deg)}
 .wordmark span:nth-child(even){transform:rotate(2deg) translateY(.04em)}
 header h1{font-size:clamp(24px,4vw,32px);line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;font-weight:700}
-.share{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-8px 0 26px;padding:10px 10px 10px 14px;border:1px solid var(--line);
+.share{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 0;padding:10px 10px 10px 14px;border:1px solid var(--line);
   border-radius:12px;background:var(--surface)}
 .share label{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
 .share input{flex:1 1 180px;min-width:0;border:0;background:transparent;color:var(--ink);font:14px var(--mono);padding:4px 0;outline:none}
@@ -96,15 +96,10 @@ footer p{margin:0 0 8px}
   <header>
     <div class="wordmark" role="img" aria-label="Weird Boob Magic"><span>WEIRD</span> <span>BOOB</span> <span>MAGIC</span></div>
     <h1>Metadata Scrubber</h1>
-    <p>Strip Content Credentials, XMP, EXIF, dates, location and encoder tags from video and images. Picture and sound are copied as-is with no re-encoding.</p>
+    <p>Remove AI Content Credentials (C2PA), EXIF, GPS and encoder tags from video and images. Lossless, and nothing leaves your browser.</p>
     <ul class="pills"><li>MP4 · MOV · M4V</li><li>JPEG · PNG</li><li>Runs in your browser, files never upload</li></ul>
   </header>
 
-  <div class="share">
-    <label for="link">Link to this tool</label>
-    <input id="link" type="text" readonly value="https://weirdboobmagic.com/">
-    <button class="btn" id="copy" type="button">Copy</button>
-  </div>
 
   <label class="drop" id="drop" tabindex="0">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
@@ -112,6 +107,12 @@ footer p{margin:0 0 8px}
     <span>or click to choose · multiple files OK</span>
     <input id="file" type="file" multiple accept=".mp4,.mov,.m4v,.jpg,.jpeg,.png,video/mp4,video/quicktime,image/jpeg,image/png" hidden>
   </label>
+
+  <div class="share">
+    <label for="link">Link to this tool</label>
+    <input id="link" type="text" readonly value="https://weirdboobmagic.com/">
+    <button class="btn" id="copy" type="button">Copy</button>
+  </div>
 
   <section id="results" aria-live="polite"></section>
 
