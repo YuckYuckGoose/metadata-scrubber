@@ -6,7 +6,7 @@ Remove AI Content Credentials (C2PA), EXIF, GPS and encoder tags from video and 
 
 ## Privacy
 
-Your files never leave your device. The whole tool is one HTML file ([`index.html`](index.html)) with no external scripts, no analytics and no network requests. You can read every line, or download the file and run it offline.
+Your files never leave your device. The whole tool is one HTML file ([`index.html`](index.html)) with no external scripts, no analytics and no requests to any other server. You can read every line, or download the file and run it offline.
 
 ## What it removes
 
